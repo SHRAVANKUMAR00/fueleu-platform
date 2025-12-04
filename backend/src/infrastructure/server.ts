@@ -1,32 +1,53 @@
-import express from "express";
+import express, { Express } from "express";
 import cors from "cors";
 import { RoutesController } from "../adapters/inbound/http/routes.controller";
-import { BankingController } from "../adapters/inbound/http/banking.controller";
-// 👇 Import the Repository implementation to create a single instance
-import { InMemoryRouteRepository } from "../adapters/outbound/postgres/in-memory-route.repository"; 
+import { registerBankingRoutes } from "../adapters/inbound/http/banking.controller"; 
+import { registerPoolingRoutes } from "../adapters/inbound/http/pooling.controller"; 
+import { PostgresRouteRepository } from "../adapters/outbound/postgres/postgres-route.repository"; // 👈 Import POSTGRES Adapter
+// Note: We no longer import InMemoryRouteRepository
 
-const app = express();
 const PORT = 3000;
 
-// --- Centralized Dependency Initialization (DI) ---
-// Create a SINGLE instance of the Mock Database to be shared
-const sharedRouteRepository = new InMemoryRouteRepository(); 
+// --- Mock PostgreSQL Client ---
+// In a real application, this would be a real connection/pool object.
+const mockPostgresClient = {
+    query: async (sql: string, params?: any[]) => {
+        // This simulates connecting to an empty database
+        console.log(`[DB MOCK] Executed query: ${sql}`);
+        return { rows: [] };
+    }
+};
 
-// Initialize Controllers and INJECT the shared repository
-const routesController = new RoutesController(sharedRouteRepository);
-const bankingController = new BankingController(sharedRouteRepository);
+// --- Centralized Dependency Initialization (Adapter Swap) ---
+// 1. Instantiate the Postgres Adapter (Hexagonal Goal Achieved!)
+const sharedRouteRepository = new PostgresRouteRepository(mockPostgresClient); 
+// Note: Seeding functionality is lost here as PostgresRepo doesn't have it.
 
-// Middleware (Tools)
+// 2. Initialize Controllers and Routers
+const routesController = new RoutesController(sharedRouteRepository); 
+
+// --- Initialize and Configure Express ---
+const app: Express = express();
+
+// Middleware
 app.use(cors()); 
 app.use(express.json()); 
 
-// Mount Routers
-// Use /routes/ for the RoutesController
+// --- Mount Routers ---
 app.use("/routes", routesController.router);
-// Use the root path (/) for the BankingController so its paths (/compliance/cb, /banking/bank) work directly
-app.use("/", bankingController.router); 
+
+registerBankingRoutes(app, sharedRouteRepository);
+registerPoolingRoutes(app, sharedRouteRepository);
+
+
+// Fallback for 404 errors 
+app.use((req, res, next) => {
+    res.status(404).json({ error: `Endpoint not found: ${req.url}` });
+});
+
 
 // Start the Server
 app.listen(PORT, () => {
   console.log(`✅ FuelEU Backend is running on http://localhost:${PORT}`);
+  console.log(`✅ ADAPTER SWAP COMPLETE: Now using PostgresRouteRepository (MOCK).`);
 });

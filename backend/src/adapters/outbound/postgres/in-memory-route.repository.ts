@@ -1,6 +1,7 @@
 import { Route } from "../../../core/domain/route.entity"; 
 import { RouteRepository } from "../../../core/ports/route-repository.port"; 
-import { BankEntry } from "../../../core/domain/banking.entity"; // Import new entity
+import { BankEntry } from "../../../core/domain/banking.entity"; 
+import { Pool } from "../../../core/domain/pooling.entity"; // Import new entity
 
 // Define what a plain JSON Route looks like
 interface RouteData {
@@ -16,8 +17,9 @@ interface RouteData {
 
 export class InMemoryRouteRepository implements RouteRepository {
   private routes: RouteData[] = [];
-  // 👇 New storage array for Banking data
   private bankRecords: BankEntry[] = []; 
+  // 👇 New storage array for Pooling data
+  private pools: Pool[] = []; 
 
   private toRouteEntity(data: RouteData): Route {
       return new Route(
@@ -33,7 +35,6 @@ export class InMemoryRouteRepository implements RouteRepository {
   }
 
   // --- Route Management (Existing) ---
-
   async save(route: RouteData): Promise<void> {
     const index = this.routes.findIndex(r => r.id === route.id);
     if (index !== -1) {
@@ -52,25 +53,36 @@ export class InMemoryRouteRepository implements RouteRepository {
     return this.routes.map(this.toRouteEntity);
   }
   
-  // --- Banking Management (New Implementations) ---
-
+  // --- Banking Management (Existing) ---
   async getBankRecords(routeId: string, year?: number): Promise<BankEntry[]> {
       let records = this.bankRecords.filter(r => r.routeId === routeId);
       if (year) {
           records = records.filter(r => r.year === year);
       }
-      // Return a copy to prevent external modification
       return records.map(r => new BankEntry(r.id, r.routeId, r.year, r.amount, r.appliedYear));
   }
 
   async saveBankEntry(entry: BankEntry): Promise<void> {
       const index = this.bankRecords.findIndex(r => r.id === entry.id);
       if (index !== -1) {
-          // Update existing entry (used when applying a banked surplus)
           this.bankRecords[index] = entry; 
       } else {
-          // Add new entry (used when banking a surplus)
           this.bankRecords.push(entry);
       }
+  }
+
+  // --- Pooling Management (New Implementations) ---
+
+  async savePool(pool: Pool): Promise<void> {
+      const index = this.pools.findIndex(p => p.id === pool.id);
+      if (index !== -1) {
+          this.pools[index] = pool; 
+      } else {
+          this.pools.push(pool); 
+      }
+  }
+
+  async findAllPools(year: number): Promise<Pool[]> {
+      return this.pools.filter(p => p.year === year);
   }
 }
